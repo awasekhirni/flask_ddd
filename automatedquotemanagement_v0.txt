@@ -1,0 +1,170 @@
+
+#Automated Quote Management Systems 
+## #Copyright (C) 2025 β ORI Inc.
+# #Written by Awase Khirni Syed 2025
+#Mermaidjs 
+
+erDiagram
+    USERS ||--o{ QUOTES : created_by
+    USERS ||--o{ QUOTE_APPROVAL_LOGS : approved_by
+    USERS ||--o{ TABLE_ACCESS_LOGS : user_id
+    USERS ||--o{ SALES_REP_PERFORMANCE : user_id
+    USERS ||--o{ USER_DEFINED_QUALITY_CHECKS : user_id
+
+    CUSTOMERS ||--o{ QUOTES : customer_id
+
+    QUOTES ||--o{ QUOTE_ITEMS : quote_id
+    QUOTES ||--o{ QUOTE_VERSIONS : quote_id
+    QUOTES ||--o{ QUOTE_APPROVAL_LOGS : quote_id
+
+    QUOTE_ITEMS ||--o{ QUOTE_ANOMALIES : quote_item_id
+    QUOTE_ITEMS ||--o{ ANOMALY_ALERTS : quote_item_id
+
+    PRODUCTS ||--o{ QUOTE_ITEMS : product_id
+    PRODUCTS ||--o{ PRODUCT_QUOTE_COUNTS : product_id
+    PRODUCTS ||--o{ DYNAMIC_PRICING_RULES : product_id
+
+    DISTRIBUTORS ||--o{ DYNAMIC_PRICING_RULES : distributor_id
+
+    PRICING_FACTORS ||--o{ DYNAMIC_PRICING_RULES : factor_id
+
+    QUOTES {
+        int id PK
+        int customer_id FK
+        int created_by FK
+        varchar status
+        varchar approval_status
+        int approved_by FK
+        timestamp approved_at
+        int version
+    }
+
+    QUOTE_ITEMS {
+        int id PK
+        int quote_id FK
+        int product_id FK
+        int quantity
+        numeric unit_price
+    }
+
+    QUOTE_ANOMALIES {
+        int id PK
+        int quote_item_id FK
+        varchar anomaly_type
+        timestamp detected_at
+        jsonb details
+    }
+
+    ANOMALY_ALERTS {
+        int id PK
+        int quote_item_id FK
+        varchar anomaly_type
+        varchar alert_recipient
+        boolean sent
+    }
+
+    QUOTE_VERSIONS {
+        int id PK
+        int quote_id FK
+        int version
+        jsonb data
+    }
+
+    QUOTE_APPROVAL_LOGS {
+        int id PK
+        int quote_id FK
+        int approved_by FK
+        varchar status
+        text comment
+    }
+
+    TABLE_ACCESS_LOGS {
+        int id PK
+        int user_id FK
+        varchar table_name
+        varchar access_type
+        text query_text
+    }
+
+    WEBHOOK_EVENTS {
+        int id PK
+        varchar event_type
+        jsonb payload
+        boolean sent
+    }
+
+    PRICING_FACTORS {
+        int id PK
+        varchar factor_name
+        text description
+    }
+
+    DYNAMIC_PRICING_RULES {
+        int id PK
+        int distributor_id FK
+        int product_id FK
+        int factor_id FK
+        numeric min_value
+        numeric max_value
+        numeric adjustment_percent
+    }
+
+    DATA_QUALITY_THRESHOLDS {
+        int id PK
+        varchar table_name
+        varchar column_name
+        numeric completeness_min
+        numeric uniqueness_min
+        numeric consistency_min
+        varchar notify_email
+    }
+
+    PRODUCT_QUOTE_COUNTS {
+        int id PK
+        int product_id FK
+        int quote_count
+        timestamp last_quoted_at
+    }
+
+    SALES_REP_PERFORMANCE {
+        int id PK
+        int user_id FK
+        int total_quotes
+        int accepted_quotes
+        int rejected_quotes
+        numeric conversion_rate
+    }
+
+    USER_DEFINED_QUALITY_CHECKS {
+        int id PK
+        int user_id FK
+        varchar table_name
+        varchar column_name
+        varchar check_type
+        text check_expression
+    }
+
+    USERS {
+        int id PK
+        varchar name
+        varchar email
+        varchar role
+    }
+
+    CUSTOMERS {
+        int id PK
+        varchar name
+        varchar region
+    }
+
+    PRODUCTS {
+        int id PK
+        varchar name
+        numeric unit_price
+    }
+
+    DISTRIBUTORS {
+        int id PK
+        varchar name
+        varchar region
+    }
