@@ -5,8 +5,18 @@
 Logger class with W3c Trace Context headers support, span ID and Trace Parentt fields, OpenTelemtry-compliant structured logging.
 Added component lifecycle monitoring, full context propogation, async-safe operation, layered architectural visibility
 added structured machine-readable logs.  This will help ins designing power dashboard, alerts and root cause analysis
-to do
--- think about way to include logging to measure end of life and technical debt here
+-- added a separate log files and levels, this supports us to build comprehensive inhouse observability system for production grade systems.
+-Subtack article to do
+
+--Awase Khirni Syed --Added 2025/April/07
+-EOL logging - having eol logging at component level(e.g., classes, functions, modules, libraries) which are scheduled to be deprecated or removed in future is the right approach for us to track at component level changes. this would also help us to assess work estimation, wbs and impact. outlined are few uses cases: deprecation warnings, scheduled removals, end of support dates, legacy feature shutdown timelines. This will help me planning, forecasting and setting up directional insights at program level
+--Technical debt using logger, it helps me track shortcuts used, suboptimal implementations or work around i have adopted, or known issues that require refactoring at some point in time. This is a hacky workaround. I should write AST compiler script at configuration level. Let me sleep over this. for now i think i will go ahead an use log_debt to track, known performance bottlenecks, temporary workarounds used at component or function level, unoptimized code paths. With this approach, i can track technical debt per team/component. certainly not bad. I could automate further at AST compiler level script to compute the impact, financial cost, migration/mitigation, risk estimation for each product at the enterprise level.
+--custom log level definitions
+--added async logging
+sample usage
+log_eol(logger,"legacyAuth class currently uses bcrypt will be removed in v1.0", component="auth",removal_data="2025-06-01",replacement="NewArgon2Handler")
+log_debt(logger,"used string parsing instead of AST for config", type="performance",ownr="backend-team",priority="high",issue_url="https://jira.betaori.com/prj-SHCXEM")
+
 
 '''
 import logging
@@ -21,7 +31,7 @@ from logging.handlers import RotatingFileHandler
 from pythonjsonlogger import jsonlogger
 from dotenv import load_dotenv
 from flask import request, g, has_request_context
-from typing import Optional, Dict, Any, Callable, Union, List
+from typing import Optional, Dict, Any, Callable
 
 load_dotenv()
 
@@ -34,10 +44,15 @@ AUDIT_LEVEL_NUM = 25
 SECURITY_LEVEL_NUM = 35
 LIFECYCLE_LEVEL_NUM = 15
 TRACE_LEVEL_NUM = 9
+EOL_LEVEL_NUM = 45     # Between WARNING (30) and ERROR (40)
+DEBT_LEVEL_NUM = 28    # Between INFO (20) and AUDIT (25)
+
 logging.addLevelName(AUDIT_LEVEL_NUM, "AUDIT")
 logging.addLevelName(SECURITY_LEVEL_NUM, "SECURITY")
 logging.addLevelName(LIFECYCLE_LEVEL_NUM, "LIFECYCLE")
 logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+logging.addLevelName(EOL_LEVEL_NUM, "EOL")
+logging.addLevelName(DEBT_LEVEL_NUM, "TECHNICAL_DEBT")
 
 def lifecycle(self, message, *args, **kwargs):
     if self.isEnabledFor(LIFECYCLE_LEVEL_NUM):
@@ -47,8 +62,18 @@ def trace(self, message, *args, **kwargs):
     if self.isEnabledFor(TRACE_LEVEL_NUM):
         self._log(TRACE_LEVEL_NUM, message, args, **kwargs)
 
+def eol(self, message, *args, **kwargs):
+    if self.isEnabledFor(EOL_LEVEL_NUM):
+        self._log(EOL_LEVEL_NUM, message, args, **kwargs)
+
+def debt(self, message, *args, **kwargs):
+    if self.isEnabledFor(DEBT_LEVEL_NUM):
+        self._log(DEBT_LEVEL_NUM, message, args, **kwargs)
+
 logging.Logger.lifecycle = lifecycle
 logging.Logger.trace = trace
+logging.Logger.eol = eol
+logging.Logger.debt = debt
 
 class CustomJsonFormatter(jsonlogger.JsonFormatter):
     """Enhanced JSON formatter with W3C Trace Context, OpenTelemetry compatibility."""
@@ -56,7 +81,6 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
     def add_fields(self, log_record: Dict, record: logging.LogRecord, message_dict: Dict) -> None:
         super().add_fields(log_record, record, message_dict)
 
-        # Base metadata
         log_record.update({
             "level": record.levelname,
             "timestamp": self.formatTime(record, self.datefmt),
@@ -87,11 +111,6 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         else:
             log_record["message"] = record.getMessage()
 
-        # Ensure OTel/W3C compatible fields
-        log_record["trace_id"] = log_record.get("trace_id", "N/A")
-        log_record["span_id"] = log_record.get("span_id", "N/A")
-        log_record["trace_flags"] = log_record.get("trace_flags", "01")  # Sampled by default
-
 class AsyncLogHandler:
     """Wrapper for async logging operations with distributed tracing context propagation."""
 
@@ -99,7 +118,6 @@ class AsyncLogHandler:
 
     @classmethod
     async def log_async(cls, logger: logging.Logger, level: int, message: str, **context: Any) -> None:
-        """Execute logging in a separate thread."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             cls._executor,
@@ -107,8 +125,6 @@ class AsyncLogHandler:
         )
 
 def setup_logger(name: str) -> logging.Logger:
-    """Configure and return a logger with file handlers and W3C trace context support."""
-
     logger = logging.getLogger(name)
     logger.setLevel(os.getenv("LOG_LEVEL", "DEBUG").upper())
 
@@ -135,12 +151,13 @@ def setup_logger(name: str) -> logging.Logger:
         logger.addHandler(create_handler("security.log", SECURITY_LEVEL_NUM))
         logger.addHandler(create_handler("lifecycle.log", LIFECYCLE_LEVEL_NUM))
         logger.addHandler(create_handler("trace.log", TRACE_LEVEL_NUM))
+        logger.addHandler(create_handler("eol.log", EOL_LEVEL_NUM))         # 👈 EOL Logs
+        logger.addHandler(create_handler("technical_debt.log", DEBT_LEVEL_NUM))  # 👈 Technical Debt Logs
 
     logger.propagate = False
     return logger
 
 def init_request_context() -> Dict[str, str]:
-    """Initialize request context with IDs for tracing including W3C Trace Context."""
     traceparent = request.headers.get('traceparent', f"00-{str(uuid.uuid4())}-{str(uuid.uuid4())[:16]}-01")
 
     try:
@@ -162,7 +179,6 @@ def init_request_context() -> Dict[str, str]:
     return context
 
 def get_request_context() -> Dict[str, str]:
-    """Get current request context safely"""
     if has_request_context():
         return {
             'request_id': getattr(g, 'request_id', 'N/A'),
@@ -182,7 +198,6 @@ def log_with_context(
     trace_id: Optional[str] = None,
     **additional_context: Any
 ) -> None:
-    """Log messages with full request context and layer tracing."""
     context = {
         **get_request_context(),
         **{
@@ -195,6 +210,15 @@ def log_with_context(
     }
 
     logger.log(level, message, extra={'context': context})
+
+# Helper functions
+def log_eol(logger: logging.Logger, message: str, **kwargs):
+    """Log end-of-life events with metadata."""
+    logger.eol(message, extra={"context": kwargs})
+
+def log_debt(logger: logging.Logger, message: str, **kwargs):
+    """Log technical debt events with metadata."""
+    logger.debt(message, extra={"context": kwargs})
 
 # Decorator for lifecycle logging
 def log_component_init(logger: logging.Logger):
@@ -268,5 +292,4 @@ def log_execution(layer: str = "unknown"):
 
 # Flask-specific integration
 def before_request() -> None:
-    """Initialize request logging context with W3C Trace Context support."""
     init_request_context()
