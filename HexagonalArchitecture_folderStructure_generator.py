@@ -1,3 +1,5 @@
+#Copyright (C) 2025 β ORI Inc.
+# #Written by Awase Khirni Syed 2025
 import os
 from typing import Dict, List
 
