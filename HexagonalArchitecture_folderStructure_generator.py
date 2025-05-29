@@ -1,18 +1,16 @@
-# #Copyright (C) 2025 β ORI Inc.
-# #Written by Awase Khirni Syed 2025
 import os
 from typing import Dict, List
 
 # Project configuration
 PROJECT_DIR = "project"
-DATABASE_URL = "postgresql+psycopg2://awase:password@localhost:5432/db"
+DATABASE_URL = "postgresql+psycopg2://awasekhirnisyed:postgres@localhost:5432/profxdb"
 
 # Define folder structure with optional files per folder
 FOLDER_STRUCTURE = {
     # Core
     "domain": ["__init__.py"],
     "application": ["__init__.py"],
-    
+
     # Ports
     "ports/http/controllers": ["__init__.py"],
     "ports/http/dtos": ["__init__.py"],
@@ -34,9 +32,17 @@ FOLDER_STRUCTURE = {
     # Config
     "config": ["__init__.py", "config.py", "dependencyinjection.py"],
 
+    # Logs
+    "logs": ["app.log", "app_errors.log", "audit.log", "error.py"],
+
     # Tests
     "tests": ["__init__.py"],
 }
+
+# Copyright header
+COPYRIGHT_HEADER = """# #Copyright (C) 2025 β ORI Inc.
+# #Written by Awase Khirni Syed 2025
+"""
 
 def ensure_init_files(folder_path: str):
     """Ensure __init__.py exists in each level of nested directories"""
@@ -46,9 +52,9 @@ def ensure_init_files(folder_path: str):
         current_path = os.path.join(current_path, part)
         os.makedirs(current_path, exist_ok=True)
         init_file = os.path.join(current_path, "__init__.py")
-        if not os.path.exists(init_file):
+        if not os.path.exists(init_file) and part != "logs":
             with open(init_file, "w") as f:
-                f.write(f"# {part} package\n")
+                f.write(f"{COPYRIGHT_HEADER}\n\n# {part} package\n")
 
 def create_folders_and_files():
     """Create the folder structure and initialize files"""
@@ -56,21 +62,31 @@ def create_folders_and_files():
         folder_path = os.path.join(PROJECT_DIR, folder)
         os.makedirs(folder_path, exist_ok=True)
 
-        # Ensure __init__.py at every level
-        ensure_init_files(folder)
+        # Ensure __init__.py at every level (except logs)
+        if folder != "logs":
+            ensure_init_files(folder)
 
         for file in files:
             file_path = os.path.join(folder_path, file)
-            if not os.path.exists(file_path) and file.endswith(".py"):
+
+            # Skip log files (.log)
+            if file.endswith(".log"):
+                if not os.path.exists(file_path):
+                    open(file_path, "a").close()
+                continue
+
+            # Only write content to .py files that don't already exist
+            if file.endswith(".py") and not os.path.exists(file_path):
                 with open(file_path, "w") as f:
-                    content = "# {}\n".format(file)
+                    content = f"{COPYRIGHT_HEADER}\n\n"
+
                     if file == "db.py":
                         content += """
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://awasekhirnisyed:postgres@localhost:5432/profxdb"
+SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://awasekhirni-syed:postgres@localhost:5432/profxdb"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -105,6 +121,23 @@ class BadRequestException(Exception):
 class NotFoundException(Exception):
     pass
                         """.strip()
+                    elif file == "error.py":
+                        content += """
+import logging
+from flask import jsonify
+
+# Setup logger
+logger = logging.getLogger(__name__)
+
+def register_error_handlers(app):
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        logger.exception("Unhandled exception: %s", e)
+        return jsonify(error="Internal server error"), 500
+                        """.strip()
+                    else:
+                        content += f"# {file}\n"
+
                     f.write(content)
 
 def create_main_app():
@@ -112,7 +145,9 @@ def create_main_app():
     main_path = os.path.join(PROJECT_DIR, "mainapp.py")
     if not os.path.exists(main_path):
         with open(main_path, "w") as f:
-            f.write("""from flask import Flask
+            f.write(f"""{COPYRIGHT_HEADER}
+
+from flask import Flask
 from flask_restx import Api
 from adapters.http.controllers.example_controller import example_ns
 
